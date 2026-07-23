@@ -24,6 +24,21 @@ runs/
 generated/
 extended/
 validation/
+extraction-review/
+reports/
+artifacts/
+outputs/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# Local training and guide images
+data/
+dataset/
+datasets/
+symbols/
+training-images/
 
 # Editor and operating-system files
 .idea/

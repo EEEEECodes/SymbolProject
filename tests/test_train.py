@@ -339,14 +339,30 @@ def test_cli_parser_exposes_documented_commands_and_defaults(tmp_path: Path):
     assert training.epochs == 250
     assert training.batch_size == 16
     assert training.seed == 1337
+    assert training.latent_dim == 32
     assert float(_field(training, "learning_rate", "lr")) == pytest.approx(2e-4)
     assert training.patience == 30
+
+    initialized = parser.parse_args(
+        [
+            "train",
+            "--data",
+            str(tmp_path),
+            "--run",
+            str(tmp_path / "expanded-run"),
+            "--init-checkpoint",
+            str(tmp_path / "best.pt"),
+        ]
+    )
+    assert Path(initialized.init_checkpoint) == tmp_path / "best.pt"
 
     generation = parser.parse_args(
         [
             "generate",
             "--checkpoint",
             str(tmp_path / "best.pt"),
+            "--base",
+            str(tmp_path / "new-base.png"),
             "--out",
             str(tmp_path / "generated"),
             "--count",
@@ -356,11 +372,49 @@ def test_cli_parser_exposes_documented_commands_and_defaults(tmp_path: Path):
     assert generation.command == "generate"
     assert generation.count == 7
     assert generation.edit_strength == pytest.approx(0.35)
+    assert Path(generation.base) == tmp_path / "new-base.png"
+
+
+def test_generation_cli_only_supplies_explicit_novelty_and_quality_overrides(
+    tmp_path: Path,
+):
+    parser = train.build_parser()
+    required = [
+        "generate",
+        "--checkpoint",
+        str(tmp_path / "best.pt"),
+        "--base",
+        str(tmp_path / "base.png"),
+        "--out",
+        str(tmp_path / "generated"),
+    ]
+
+    inherited = vars(parser.parse_args(required))
+    novelty_keys = set(train.NoveltyConfig.__dataclass_fields__)
+    quality_keys = set(train.QualityConfig.__dataclass_fields__)
+    assert novelty_keys.isdisjoint(inherited)
+    assert quality_keys.isdisjoint(inherited)
+
+    explicit = vars(
+        parser.parse_args(
+            required
+            + [
+                "--duplicate-threshold",
+                "0.91",
+                "--maximum-ink",
+                "0.22",
+            ]
+        )
+    )
+    assert explicit["duplicate_threshold"] == pytest.approx(0.91)
+    assert explicit["maximum_ink"] == pytest.approx(0.22)
+    assert (novelty_keys - {"duplicate_threshold"}).isdisjoint(explicit)
+    assert (quality_keys - {"maximum_ink"}).isdisjoint(explicit)
 
 
 def test_conditional_vae_forward_shapes_and_finite_values():
     torch = pytest.importorskip("torch")
-    model = train.ConditionalVAE(image_size=128, latent_dim=64, base_channels=8)
+    model = train.ConditionalVAE(image_size=128, latent_dim=32, base_channels=8)
     model.eval()
     target = torch.zeros(1, 1, 128, 128)
     condition = torch.zeros_like(target)
@@ -369,24 +423,50 @@ def test_conditional_vae_forward_shapes_and_finite_values():
     with torch.no_grad():
         output = model(target, condition, strength)
 
-    if isinstance(output, dict):
-        logits = output["logits"]
-        mu = output["mu"]
-        logvar = output["logvar"]
-        width = output["width"]
-    else:
-        logits, mu, logvar, width = output
+    assert isinstance(output, dict)
+    logits = output["logits"]
+    add_logits = output["add_logits"]
+    remove_logits = output["remove_logits"]
+    mu = output["mu"]
+    logvar = output["logvar"]
+    prior_mu = output["prior_mu"]
+    prior_logvar = output["prior_logvar"]
+    width = output["width"]
     assert logits.shape == target.shape
-    assert mu.shape == logvar.shape == (1, 64)
+    assert add_logits.shape == remove_logits.shape == target.shape
+    assert mu.shape == logvar.shape == prior_mu.shape == prior_logvar.shape == (1, 32)
     assert width.numel() == 1
     assert 1.0 <= float(width.item()) <= 6.0
-    assert all(torch.isfinite(value).all() for value in (logits, mu, logvar, width))
+    assert all(
+        torch.isfinite(value).all()
+        for value in (
+            logits,
+            add_logits,
+            remove_logits,
+            mu,
+            logvar,
+            prior_mu,
+            prior_logvar,
+            width,
+        )
+    )
+    composed = (
+        condition * (1.0 - torch.sigmoid(remove_logits))
+        + (1.0 - condition) * torch.sigmoid(add_logits)
+    )
+    assert torch.allclose(torch.sigmoid(logits), composed, atol=1e-5)
 
-    fixed_z = torch.zeros(1, 64)
+    fixed_z = torch.zeros(1, 32)
     with torch.no_grad():
-        sampled_a, sampled_width_a = model.sample(condition, strength, z=fixed_z)
-        sampled_b, sampled_width_b = model.sample(condition, strength, z=fixed_z)
-    assert sampled_a.shape == target.shape
-    assert sampled_width_a.shape == (1,)
-    assert torch.equal(sampled_a, sampled_b)
-    assert torch.equal(sampled_width_a, sampled_width_b)
+        sampled_a = model.sample(
+            condition, strength, z=fixed_z, return_components=True
+        )
+        sampled_b = model.sample(
+            condition, strength, z=fixed_z, return_components=True
+        )
+    assert sampled_a["logits"].shape == target.shape
+    assert sampled_a["add_logits"].shape == target.shape
+    assert sampled_a["remove_logits"].shape == target.shape
+    assert sampled_a["width"].shape == (1,)
+    for key in ("logits", "add_logits", "remove_logits", "width"):
+        assert torch.equal(sampled_a[key], sampled_b[key])

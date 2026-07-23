@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Local controls for training add-on symbols from paired base and deviation families.">
+  <title>Paired-Family Symbol Trainer</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to controls</a>
+
+  <header class="app-header">
+    <div class="brand-block">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="img">
+          <path d="M6 22 12 9l5 14 4-10 5 9" />
+        </svg>
+      </div>
+      <div>
+        <p class="eyebrow">Local workspace</p>
+        <h1>Add-on Symbol Trainer</h1>
+      </div>
+    </div>
+
+    <div class="job-strip" aria-label="Current job">
+      <div class="job-copy">
+        <span id="job-status" class="status-pill" data-status="idle">Idle</span>
+        <span id="job-message" class="job-message" aria-live="polite">Loading backend…</span>
+      </div>
+      <progress id="job-progress" max="1" value="0" aria-label="Job progress">0%</progress>
+      <button id="cancel-job" class="button danger quiet" type="button" disabled>Cancel</button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <nav class="tab-list" role="tablist" aria-label="Trainer sections">
+      <button id="tab-dataset" class="tab-button" type="button" role="tab" aria-selected="true" aria-controls="panel-dataset" data-tab="dataset">
+        <span class="tab-number">01</span> Dataset
+      </button>
+      <button id="tab-training" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-training" tabindex="-1" data-tab="training">
+        <span class="tab-number">02</span> Training
+      </button>
+      <button id="tab-generation" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-generation" tabindex="-1" data-tab="generation">
+        <span class="tab-number">03</span> Generation
+      </button>
+      <button id="tab-results" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-results" tabindex="-1" data-tab="results">
+        <span class="tab-number">04</span> Results
+      </button>
+      <button id="tab-environment" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-environment" tabindex="-1" data-tab="environment">
+        <span class="tab-number">05</span> Environment
+      </button>
+      <div class="local-note">
+        <span class="local-dot" aria-hidden="true"></span>
+        <span><strong>Local only</strong>Files stay on this computer.</span>
+      </div>
+    </nav>
+
+    <main id="workspace" class="workspace">
+      <div id="connection-error" class="notice error" role="alert" hidden></div>
+
+      <form id="config-form">
+        <section id="panel-dataset" class="panel" role="tabpanel" aria-labelledby="tab-dataset" data-panel="dataset">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Prepare inputs</p>
+              <h2>Dataset</h2>
+              <p>Validate paired base and deviation families before training. Images are read in place and are never copied or uploaded.</p>
+            </div>
+            <button class="button primary action-button" type="button" data-action="validate">Validate dataset</button>
+          </div>
+
+          <fieldset class="card path-card">
+            <legend>Locations</legend>
+            <div class="field-grid single">
+              <div class="field path-field">
+                <label for="path-data">Family dataset folder <span class="required">Required</span></label>
+                <div class="path-control">
+                  <input id="path-data" type="text" autocomplete="off" spellcheck="false" placeholder="C:\path\to\paired-families" data-config-group="paths" data-config-key="data">
+                  <button class="button secondary picker" type="button" aria-label="Choose family dataset folder" data-picker="directory" data-target="path-data" data-title="Choose the paired-family dataset folder">Browse</button>
+                </div>
+                <p class="hint">Each immediate child folder is one family. Folder names become stable family IDs.</p>
+              </div>
+              <div class="field path-field">
+                <label for="path-report">Validation report folder <span class="required">Required</span></label>
+                <div class="path-control">
+                  <input id="path-report" type="text" autocomplete="off" spellcheck="false" data-config-group="paths" data-config-key="report">
+                  <button class="button secondary picker" type="button" aria-label="Choose validation report folder" data-picker="directory" data-target="path-report" data-title="Choose the validation report folder">Browse</button>
+                </div>
+                <p class="hint">Contact sheets, manifests, and validation details are written here.</p>
+              </div>
+            </div>
+          </fieldset>
+
+          <section class="card dataset-layout" aria-labelledby="dataset-layout-title">
+            <div>
+              <p class="eyebrow">Required layout</p>
+              <h3 id="dataset-layout-title">One base and a deviations folder per family</h3>
+              <p>Every deviation is a complete final drawing: the hand-redrawn base plus its added lines. Add future families as new sibling folders.</p>
+            </div>
+            <pre class="folder-tree" aria-label="Required dataset folder example">dataset/
+  family-a/
+    base.png
+    deviations/
+      deviation-001.png
+      deviation-002.png
+  family-b/
+    base.webp
+    deviations/
+      deviation-001.png</pre>
+          </section>
+
+          <fieldset class="card">
+            <legend>Preprocessing</legend>
+            <div class="field-grid">
+              <div class="field">
+                <label for="pre-image-size">Image size</label>
+                <div class="unit-input"><input id="pre-image-size" type="number" min="32" max="1024" step="16" required data-config-group="preprocessing" data-config-key="image_size"><span>px</span></div>
+                <p class="hint">At least 32 and divisible by 16.</p>
+              </div>
+              <div class="field">
+                <label for="pre-margin">Canvas margin</label>
+                <div class="unit-input"><input id="pre-margin" type="number" min="0" max="340" step="1" required data-config-group="preprocessing" data-config-key="margin"><span>px</span></div>
+              </div>
+              <div class="field">
+                <label for="pre-stroke">Maximum source stroke</label>
+                <div class="unit-input"><input id="pre-stroke" type="number" min="0.1" max="128" step="0.1" required data-config-group="preprocessing" data-config-key="max_source_stroke_width"><span>px</span></div>
+              </div>
+              <div class="field">
+                <label for="pre-component">Minimum component</label>
+                <div class="unit-input"><input id="pre-component" type="number" min="1" max="10000" step="1" required data-config-group="preprocessing" data-config-key="min_component_pixels"><span>px</span></div>
+              </div>
+              <div class="field">
+                <label for="pre-max-pixels">Maximum source pixels</label>
+                <input id="pre-max-pixels" type="number" min="1024" max="1000000000" step="1" required data-config-group="preprocessing" data-config-key="max_input_pixels">
+              </div>
+              <div class="field">
+                <label for="pre-policy">Filled shape policy</label>
+                <select id="pre-policy" data-config-group="preprocessing" data-config-key="filled_policy">
+                  <option value="outline">Convert to outline</option>
+                  <option value="reject">Reject image</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="pre-validation">Validation split</label>
+                <div class="unit-input"><input id="pre-validation" type="number" min="0.01" max="0.49" step="0.01" required data-config-group="preprocessing" data-config-key="validation_fraction"><span>ratio</span></div>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="card">
+            <legend>Base-to-deviation registration</legend>
+            <p class="section-hint">The validator aligns each separately normalized, hand-drawn base to its complete deviation before measuring additions and removals.</p>
+            <div class="field-grid">
+              <div class="field">
+                <label for="reg-angle">Rotation search</label>
+                <div class="unit-input"><input id="reg-angle" type="number" min="0" max="45" step="0.5" required data-config-group="registration" data-config-key="angle_range"><span>&plusmn;&deg;</span></div>
+              </div>
+              <div class="field">
+                <label for="reg-translation">Translation search</label>
+                <div class="unit-input"><input id="reg-translation" type="number" min="0" max="32" step="1" required data-config-group="registration" data-config-key="translation_range"><span>&plusmn;px</span></div>
+              </div>
+              <div class="field">
+                <label for="reg-scale">Scale search</label>
+                <div class="unit-input"><input id="reg-scale" type="number" min="0" max="0.49" step="0.01" required data-config-group="registration" data-config-key="scale_range"><span>&plusmn;ratio</span></div>
+              </div>
+              <div class="field">
+                <label for="reg-tolerance">Line match tolerance</label>
+                <div class="unit-input"><input id="reg-tolerance" type="number" min="0" max="12" step="0.5" required data-config-group="registration" data-config-key="match_tolerance"><span>px</span></div>
+              </div>
+              <div class="field">
+                <label for="reg-overlap">Minimum overlap</label>
+                <div class="unit-input"><input id="reg-overlap" type="number" min="0" max="1" step="0.01" required data-config-group="registration" data-config-key="minimum_overlap"><span>ratio</span></div>
+              </div>
+            </div>
+          </fieldset>
+
+          <aside class="card safety-card" aria-labelledby="safety-title">
+            <div>
+              <p class="eyebrow">Always enforced</p>
+              <h3 id="safety-title">Structural safety rules</h3>
+            </div>
+            <ul>
+              <li><strong id="safety-minimum-families">4</strong> valid families minimum</li>
+              <li><strong id="safety-minimum-deviations">20</strong> unique usable deviations per family minimum</li>
+              <li>Warnings below <strong id="safety-recommended-deviations">30</strong> deviations per family</li>
+              <li>SVG output uses only permitted structural elements</li>
+              <li>Every mark is a black stroke with no fill</li>
+            </ul>
+          </aside>
+        </section>
+
+        <section id="panel-training" class="panel" role="tabpanel" aria-labelledby="tab-training" data-panel="training" hidden>
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Learn the visual language</p>
+              <h2>Training</h2>
+              <p>Learn additions and removals from real base-to-deviation pairs, then audit performance on bases excluded from each fold.</p>
+            </div>
+            <button class="button primary action-button" type="button" data-action="train">Start training</button>
+          </div>
+
+          <fieldset class="card path-card">
+            <legend>Run locations</legend>
+            <div class="field-grid single">
+              <div class="field path-field">
+                <label for="path-run">Run folder <span class="required">Required</span></label>
+                <div class="path-control">
+                  <input id="path-run" type="text" autocomplete="off" spellcheck="false" data-config-group="paths" data-config-key="run">
+                  <button class="button secondary picker" type="button" aria-label="Choose training run folder" data-picker="directory" data-target="path-run" data-title="Choose the training run folder">Browse</button>
+                </div>
+              </div>
+              <div class="field path-field">
+                <label for="path-resume">Exact resume checkpoint <span class="optional">Optional</span></label>
+                <div class="path-control">
+                  <input id="path-resume" type="text" autocomplete="off" spellcheck="false" placeholder="Continue the same dataset and run state" data-config-group="paths" data-config-key="resume">
+                  <button class="button secondary picker" type="button" aria-label="Choose exact resume checkpoint" data-picker="file" data-target="path-resume" data-title="Choose an exact-resume checkpoint">Browse</button>
+                </div>
+                <p class="hint">Restores optimizer, random state, calibration, and active audit stage. The dataset fingerprint must match.</p>
+              </div>
+              <div class="field path-field">
+                <label for="path-init-checkpoint">Initialize from checkpoint <span class="optional">Optional</span></label>
+                <div class="path-control">
+                  <input id="path-init-checkpoint" type="text" autocomplete="off" spellcheck="false" placeholder="Start a new run from learned weights" data-config-group="paths" data-config-key="init_checkpoint">
+                  <button class="button secondary picker" type="button" aria-label="Choose initialization checkpoint" data-picker="file" data-target="path-init-checkpoint" data-title="Choose a checkpoint for weight initialization">Browse</button>
+                </div>
+                <p class="hint">Use after adding families. Loads compatible model weights but resets optimizer, random state, audit, calibration, and references.</p>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="card">
+            <legend>Model</legend>
+            <div class="field-grid">
+              <div class="field">
+                <label for="model-latent">Latent dimensions</label>
+                <input id="model-latent" type="number" min="2" max="2048" step="1" required data-config-group="model" data-config-key="latent_dim">
+              </div>
+              <div class="field">
+                <label for="model-channels">Base channels</label>
+                <input id="model-channels" type="number" min="4" max="512" step="4" required data-config-group="model" data-config-key="base_channels">
+              </div>
+              <div class="field">
+                <label for="model-min-stroke">Minimum output stroke</label>
+                <div class="unit-input"><input id="model-min-stroke" type="number" min="0.1" max="32" step="0.1" required data-config-group="model" data-config-key="min_stroke_width"><span>px</span></div>
+              </div>
+              <div class="field">
+                <label for="model-max-stroke">Maximum output stroke</label>
+                <div class="unit-input"><input id="model-max-stroke" type="number" min="0.1" max="32" step="0.1" required data-config-group="model" data-config-key="max_stroke_width"><span>px</span></div>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="card">
+            <legend>Optimization</legend>
+            <div class="field-grid">
+              <div class="field">
+                <label for="train-device">Device</label>
+                <select id="train-device" data-config-group="training" data-config-key="device">
+                  <option value="auto">Auto</option><option value="cuda">CUDA</option><option value="cpu">CPU</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="train-epochs">Epochs</label>
+                <input id="train-epochs" type="number" min="1" max="100000" step="1" required data-config-group="training" data-config-key="epochs">
+              </div>
+              <div class="field">
+                <label for="train-batch">Batch size</label>
+                <input id="train-batch" type="number" min="1" max="4096" step="1" required data-config-group="training" data-config-key="batch_size">
+              </div>
+              <div class="field">
+                <label for="train-lr">Learning rate</label>
+                <input id="train-lr" type="number" min="0.00000001" max="1" step="0.000001" required data-config-group="training" data-config-key="learning_rate">
+              </div>
+              <div class="field">
+                <label for="train-decay">AdamW weight decay</label>
+                <input id="train-decay" type="number" min="0" max="1" step="0.00001" required data-config-group="training" data-config-key="weight_decay">
+              </div>
+              <div class="field">
+                <label for="train-patience">Early-stop patience</label>
+                <div class="unit-input"><input id="train-patience" type="number" min="1" max="10000" step="1" required data-config-group="training" data-config-key="patience"><span>epochs</span></div>
+              </div>
+              <div class="field">
+                <label for="train-seed">Random seed</label>
+                <input id="train-seed" type="number" min="0" max="4294967295" step="1" required data-config-group="training" data-config-key="seed">
+              </div>
+              <div class="field">
+                <label for="train-kl">Maximum KL weight</label>
+                <input id="train-kl" type="number" min="0" max="10" step="0.0001" required data-config-group="training" data-config-key="beta_max">
+              </div>
+              <div class="field">
+                <label for="train-warmup">KL warmup</label>
+                <div class="unit-input"><input id="train-warmup" type="number" min="0" max="1" step="0.01" required data-config-group="training" data-config-key="beta_warmup_fraction"><span>fraction</span></div>
+              </div>
+              <div class="field">
+                <label for="train-clip">Gradient clipping</label>
+                <input id="train-clip" type="number" min="0" max="1000" step="0.1" required data-config-group="training" data-config-key="gradient_clip">
+              </div>
+              <div class="field">
+                <label for="train-workers">Data workers</label>
+                <input id="train-workers" type="number" min="0" max="128" step="1" required data-config-group="training" data-config-key="workers">
+              </div>
+              <div class="field">
+                <label for="train-preview-count">Preview count</label>
+                <input id="train-preview-count" type="number" min="1" max="256" step="1" required data-config-group="training" data-config-key="preview_count">
+              </div>
+              <div class="field">
+                <label for="train-preview-frequency">Preview frequency</label>
+                <div class="unit-input"><input id="train-preview-frequency" type="number" min="1" max="10000" step="1" required data-config-group="training" data-config-key="preview_frequency"><span>epochs</span></div>
+              </div>
+            </div>
+            <div class="toggle-row">
+              <label class="toggle"><input type="checkbox" data-config-group="training" data-config-key="deterministic"><span aria-hidden="true"></span><span><strong>Deterministic mode</strong><small>Prefer reproducibility over maximum speed.</small></span></label>
+              <label class="toggle"><input type="checkbox" data-config-group="training" data-config-key="mixed_precision"><span aria-hidden="true"></span><span><strong>CUDA mixed precision</strong><small>Reduce GPU memory use when supported.</small></span></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="card">
+            <legend>Paired examples and losses</legend>
+            <p class="section-hint">Family-balanced sampling prevents larger families from dominating. The three example probabilities must add up to 1.00.</p>
+            <div class="field-grid">
+              <div class="field">
+                <label for="train-real-pair">Real registered pairs</label>
+                <div class="unit-input"><input id="train-real-pair" type="number" min="0" max="1" step="0.01" required data-config-group="training" data-config-key="real_pair_probability"><span>ratio</span></div>
+              </div>
+              <div class="field">
+                <label for="train-synthetic-pair">Synthetic partial pairs</label>
+                <div class="unit-input"><input id="train-synthetic-pair" type="number" min="0" max="1" step="0.01" required data-config-group="training" data-config-key="synthetic_pair_probability"><span>ratio</span></div>
+              </div>
+              <div class="field">
+                <label for="train-identity-pair">Identity pairs</label>
+                <div class="unit-input"><input id="train-identity-pair" type="number" min="0" max="1" step="0.01" required data-config-group="training" data-config-key="identity_pair_probability"><span>ratio</span></div>
+              </div>
+              <div class="field">
+                <label for="train-delta-weight">Delta loss weight</label>
+                <input id="train-delta-weight" type="number" min="0" max="100" step="0.05" required data-config-group="training" data-config-key="delta_loss_weight">
+              </div>
+              <div class="field">
+                <label for="train-retention-weight">Retention / removal weight</label>
+                <input id="train-retention-weight" type="number" min="0" max="100" step="0.05" required data-config-group="training" data-config-key="retention_loss_weight">
+              </div>
+              <div class="field">
+                <label for="train-audit-samples">Audit samples per held-out base</label>
+                <input id="train-audit-samples" type="number" min="1" max="4096" step="1" required data-config-group="training" data-config-key="audit_sample_count">
+              </div>
+            </div>
+          </fieldset>
+
+          <aside class="card audit-note" aria-labelledby="audit-note-title">
+            <div>
+              <p class="eyebrow">Runs automatically</p>
+              <h3 id="audit-note-title">Unseen-base audit</h3>
+            </div>
+            <p>Four families use leave-one-family-out evaluation. Five or more use five deterministic, family-grouped folds. Temporary fold models never see their held-out family and completed fold weights are discarded before final training.</p>
+          </aside>
+        </section>
+
+        <section id="panel-generation" class="panel" role="tabpanel" aria-labelledby="tab-generation" data-panel="generation" hidden>
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Create candidates</p>
+              <h2>Generation</h2>
+              <p>Apply learned additions and occasional removals to a required base image, then route borderline candidates for review.</p>
+            </div>
+            <button class="button primary action-button" type="button" data-action="generate">Generate symbols</button>
+          </div>
+
+          <fieldset class="card path-card">
+            <legend>Inputs and output</legend>
+            <div class="field-grid single">
+              <div class="field path-field">
+                <label for="path-checkpoint">Checkpoint <span class="required">Required</span></label>
+                <div class="path-control">
+                  <input id="path-checkpoint" type="text" autocomplete="off" spellcheck="false" data-config-group="paths" data-config-key="checkpoint">
+                  <button class="button secondary picker" type="button" aria-label="Choose generation checkpoint" data-picker="file" data-target="path-checkpoint" data-title="Choose a generation checkpoint">Browse</button>
+                </div>
+              </div>
+              <div class="field path-field">
+                <label for="path-base">Base image <span class="required">Required</span></label>
+                <div class="path-control">
+                  <input id="path-base" type="text" autocomplete="off" spellcheck="false" placeholder="Choose a trained or completely new base" data-config-group="paths" data-config-key="base">
+                  <button class="button secondary picker" type="button" aria-label="Choose generation base image" data-picker="file" data-target="path-base" data-title="Choose a base image">Browse</button>
+                </div>
+                <p class="hint">The checkpoint supplies a learned conditional prior; family IDs are never required for new bases.</p>
+              </div>
+              <div class="field path-field">
+                <label for="path-out">Output folder <span class="required">Required</span></label>
+                <div class="path-control">
+                  <input id="path-out" type="text" autocomplete="off" spellcheck="false" data-config-group="paths" data-config-key="out">
+                  <button class="button secondary picker" type="button" aria-label="Choose generation output folder" data-picker="directory" data-target="path-out" data-title="Choose the generation output folder">Browse</button>
+                </div>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="card">
+            <legend>Sampling</legend>
+            <div class="field-grid">
+              <div class="field"><label for="gen-count">Accepted count</label><input id="gen-count" type="number" min="1" max="100000" step="1" required data-config-group="generation" data-config-key="count"></div>
+              <div class="field"><label for="gen-strength">Edit strength percentile</label><input id="gen-strength" type="number" min="0" max="1" step="0.01" required data-config-group="generation" data-config-key="edit_strength"><p class="hint">0.35 targets roughly the 35th-percentile observed change.</p></div>
+              <div class="field"><label for="gen-temperature">Temperature</label><input id="gen-temperature" type="number" min="0" max="10" step="0.05" required data-config-group="generation" data-config-key="temperature"></div>
+              <div class="field"><label for="gen-batch">Sampling batch</label><input id="gen-batch" type="number" min="1" max="4096" step="1" required data-config-group="generation" data-config-key="sampling_batch"></div>
+              <div class="field"><label for="gen-threshold">Raster threshold <span class="optional">Optional</span></label><input id="gen-threshold" type="number" min="0.05" max="0.95" step="0.01" placeholder="Use calibrated value" data-config-group="generation" data-config-key="threshold_override" data-nullable="true"></div>
+              <div class="field"><label for="gen-review-cap">Review cap <span class="optional">Optional</span></label><input id="gen-review-cap" type="number" min="0" max="100000" step="1" placeholder="Unlimited" data-config-group="generation" data-config-key="review_cap" data-nullable="true"></div>
+              <div class="field"><label for="gen-attempts">Attempt multiplier</label><input id="gen-attempts" type="number" min="1" max="10000" step="1" required data-config-group="generation" data-config-key="attempt_multiplier"></div>
+              <div class="field"><label for="gen-seed">Random seed</label><input id="gen-seed" type="number" min="0" max="4294967295" step="1" required data-config-group="generation" data-config-key="seed"></div>
+              <div class="field"><label for="gen-device">Device</label><select id="gen-device" data-config-group="generation" data-config-key="device"><option value="auto">Auto</option><option value="cuda">CUDA</option><option value="cpu">CPU</option></select></div>
+            </div>
+          </fieldset>
+
+          <details class="card advanced-card">
+            <summary><span><strong>Novelty controls</strong><small>Similarity thresholds and alignment search</small></span></summary>
+            <div class="details-body">
+              <div class="field-grid">
+                <div class="field"><label for="nov-duplicate">Duplicate threshold</label><input id="nov-duplicate" type="number" min="0" max="1" step="0.01" required data-config-group="novelty" data-config-key="duplicate_threshold"></div>
+                <div class="field"><label for="nov-review">Review threshold</label><input id="nov-review" type="number" min="0" max="1" step="0.01" required data-config-group="novelty" data-config-key="review_threshold"></div>
+                <div class="field"><label for="nov-transform">Rotated / mirrored review</label><input id="nov-transform" type="number" min="0" max="1" step="0.01" required data-config-group="novelty" data-config-key="transformed_review_threshold"></div>
+                <div class="field"><label for="nov-skeleton-weight">Skeleton weight</label><input id="nov-skeleton-weight" type="number" min="0" max="1" step="0.01" required data-config-group="novelty" data-config-key="skeleton_weight"></div>
+                <div class="field"><label for="nov-render-weight">Rendered weight</label><input id="nov-render-weight" type="number" min="0" max="1" step="0.01" required data-config-group="novelty" data-config-key="rendered_weight"></div>
+                <div class="field"><label for="nov-topology-weight">Topology weight</label><input id="nov-topology-weight" type="number" min="0" max="1" step="0.01" required data-config-group="novelty" data-config-key="topology_weight"></div>
+                <div class="field"><label for="nov-tolerance">Skeleton tolerance</label><div class="unit-input"><input id="nov-tolerance" type="number" min="0" max="32" step="0.5" required data-config-group="novelty" data-config-key="skeleton_tolerance"><span>px</span></div></div>
+                <div class="field"><label for="nov-angle">Alignment rotation</label><div class="unit-input"><input id="nov-angle" type="number" min="0" max="180" step="0.5" required data-config-group="novelty" data-config-key="alignment_angle"><span>±°</span></div></div>
+                <div class="field"><label for="nov-translation">Alignment translation</label><div class="unit-input"><input id="nov-translation" type="number" min="0" max="64" step="1" required data-config-group="novelty" data-config-key="alignment_translation"><span>±px</span></div></div>
+                <div class="field"><label for="nov-scale">Alignment scale</label><div class="unit-input"><input id="nov-scale" type="number" min="0" max="0.49" step="0.01" required data-config-group="novelty" data-config-key="alignment_scale"><span>±ratio</span></div></div>
+                <div class="field"><label for="nov-shortlist">Shortlist maximum</label><input id="nov-shortlist" type="number" min="1" max="100000" step="1" required data-config-group="novelty" data-config-key="shortlist_maximum"></div>
+                <div class="field"><label for="nov-finalists">Precise finalists</label><input id="nov-finalists" type="number" min="1" max="100000" step="1" required data-config-group="novelty" data-config-key="precise_finalists"></div>
+              </div>
+            </div>
+          </details>
+
+          <details class="card advanced-card">
+            <summary><span><strong>Quality controls</strong><small>Geometry and guided-change rejection limits</small></span></summary>
+            <div class="details-body">
+              <div class="field-grid">
+                <div class="field"><label for="quality-curve">Curve error</label><div class="unit-input"><input id="quality-curve" type="number" min="0.01" max="32" step="0.05" required data-config-group="quality" data-config-key="curve_error"><span>px</span></div></div>
+                <div class="field"><label for="quality-ink">Maximum ink</label><div class="unit-input"><input id="quality-ink" type="number" min="0.01" max="0.99" step="0.01" required data-config-group="quality" data-config-key="maximum_ink"><span>ratio</span></div></div>
+                <div class="field"><label for="quality-components">Maximum components</label><input id="quality-components" type="number" min="1" max="10000" step="1" required data-config-group="quality" data-config-key="maximum_components"></div>
+                <div class="field"><label for="quality-crowded">Crowded-line limit</label><div class="unit-input"><input id="quality-crowded" type="number" min="0" max="1" step="0.01" required data-config-group="quality" data-config-key="crowded_line_limit"><span>ratio</span></div></div>
+                <div class="field"><label for="quality-distance">Crowd distance</label><div class="unit-input"><input id="quality-distance" type="number" min="0.1" max="32" step="0.1" required data-config-group="quality" data-config-key="crowd_distance_factor"><span>× stroke</span></div></div>
+                <div class="field"><label for="quality-parallel">Parallel bundle threshold</label><input id="quality-parallel" type="number" min="2" max="1000" step="1" required data-config-group="quality" data-config-key="parallel_bundle_threshold"></div>
+                <div class="field"><label for="quality-solid">Solid diameter factor</label><input id="quality-solid" type="number" min="0.1" max="100" step="0.1" required data-config-group="quality" data-config-key="solid_diameter_factor"></div>
+                <div class="field"><label for="quality-noop-pixels">Guided no-op distance</label><div class="unit-input"><input id="quality-noop-pixels" type="number" min="0" max="1024" step="0.5" required data-config-group="quality" data-config-key="guided_noop_pixels"><span>px</span></div></div>
+                <div class="field"><label for="quality-noop-fraction">Guided no-op area</label><div class="unit-input"><input id="quality-noop-fraction" type="number" min="0" max="1" step="0.01" required data-config-group="quality" data-config-key="guided_noop_fraction"><span>ratio</span></div></div>
+              </div>
+            </div>
+          </details>
+        </section>
+      </form>
+
+      <section id="panel-results" class="panel" role="tabpanel" aria-labelledby="tab-results" data-panel="results" hidden>
+        <div class="panel-heading">
+          <div><p class="eyebrow">Live and saved output</p><h2>Results</h2><p>Progress, backend messages, previews, manifests, and checkpoints appear here.</p></div>
+          <button id="refresh-results" class="button secondary" type="button">Refresh files</button>
+        </div>
+        <div class="result-grid">
+          <section class="card result-summary" aria-labelledby="summary-title">
+            <div class="card-heading"><h3 id="summary-title">Run summary</h3><span id="summary-status" class="muted">No job yet</span></div>
+            <pre id="result-json" class="json-view">Start validation, training, or generation to see its result.</pre>
+          </section>
+          <section class="card log-card" aria-labelledby="log-title">
+            <div class="card-heading"><h3 id="log-title">Live log</h3><button id="clear-log" class="text-button" type="button">Clear view</button></div>
+            <div id="job-log" class="log-view" role="log" aria-live="polite" aria-relevant="additions"></div>
+          </section>
+        </div>
+        <div id="paired-results" class="paired-results" hidden>
+          <section id="family-results-card" class="card structured-card" aria-labelledby="family-results-title" hidden>
+            <div class="card-heading">
+              <div><h3 id="family-results-title">Family summary</h3><p class="muted">Usable pairs, leakage-safe splits, and validation status by family.</p></div>
+            </div>
+            <div id="family-results-table" class="table-scroll"></div>
+          </section>
+          <section id="audit-results-card" class="card structured-card" aria-labelledby="audit-results-title" hidden>
+            <div class="card-heading">
+              <div><h3 id="audit-results-title">Unseen-base audit</h3><p class="muted">Held-out families and fixed-seed reconstruction, retention, diversity, quality, and change metrics.</p></div>
+            </div>
+            <div id="audit-results-table" class="table-scroll"></div>
+          </section>
+        </div>
+        <section id="loss-card" class="card chart-card" aria-labelledby="loss-title" hidden>
+          <div class="card-heading">
+            <div>
+              <h3 id="loss-title">Loss history</h3>
+              <p class="muted">Live batch loss; completed runs add validation loss from metrics.json.</p>
+            </div>
+            <div class="chart-legend" aria-hidden="true"><span class="train-key">Train</span><span class="validation-key">Validation</span></div>
+          </div>
+          <canvas id="loss-chart" height="220" role="img" aria-label="Training and validation loss chart"></canvas>
+        </section>
+        <section class="card artifacts-card" aria-labelledby="artifacts-title">
+          <div class="card-heading"><div><h3 id="artifacts-title">Artifacts and registration previews</h3><p id="artifact-count" class="muted">No selected output folders yet.</p></div></div>
+          <div id="artifact-grid" class="artifact-grid"></div>
+        </section>
+      </section>
+
+      <section id="panel-environment" class="panel" role="tabpanel" aria-labelledby="tab-environment" data-panel="environment" hidden>
+        <div class="panel-heading">
+          <div><p class="eyebrow">Runtime readiness</p><h2>Environment</h2><p>Check Python, PyTorch, CUDA, and backend availability before a long run.</p></div>
+          <button id="reload-environment" class="button secondary" type="button">Reload</button>
+        </div>
+        <div id="environment-grid" class="environment-grid" aria-live="polite"></div>
+        <section class="card environment-note">
+          <h3>How this page works</h3>
+          <p>The server listens only on <code>127.0.0.1</code>. Folder selectors are native desktop dialogs; every path remains editable if the dialog is unavailable. One training or generation task can use the backend at a time.</p>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
